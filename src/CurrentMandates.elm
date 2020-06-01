@@ -2,63 +2,172 @@ module CurrentMandates exposing (..)
 
 import Browser
 import Html exposing (..)
-import Html.Attributes as Attr exposing (class, classList, id, name, src, title, type_)
+import Html.Attributes as Attr exposing (class, classList, href, id, name, src, title, type_)
 import Html.Events exposing (on, onClick)
+import Http
 import Json.Decode as Decode exposing (Decoder, at, bool, int, list, string, succeed)
 import Json.Decode.Pipeline exposing (optional, required)
 
 
 type alias Model =
-    { mandates : List Mandate }
+    { status : Status
+    }
+
+
+type Status
+    = Loading
+    | Loaded (List Role)
+    | Errored String
 
 
 
 -- TODO reduce fields?
+-- TODO toggle active
 
 
-type alias Mandate =
+type alias Role =
     { title : String
     , identifier : String
     , email : String
     , active : Bool
     , id : Int
-    , start : String
-    , end : String
-
-    --- User
-    , firstName : String
-    , lastName : String
-    , kthId : String
-    , ugKthId : String
-
-    -- Group
-    , groupName : String
-    , groupIdentifier : String
+    , mandates : List Mandate
+    , group : Group
     }
 
 
+type alias Mandate =
+    { start : String, end : String, user : User }
+
+
+type alias User =
+    { firstName : String, lastName : String, kthId : String, ugKthId : String }
+
+
+type alias Group =
+    { name : String, identifier : String }
+
+
 type Msg
-    = NothingYet
+    = GotRoles (Result Http.Error (List Role))
 
 
 view : Model -> Html Msg
 view model =
-    Debug.todo "unimplemented"
+    div [ id "application", class "purple" ]
+        [ viewHeader
+        , viewContent model
+        ]
+
+
+viewHeader : Html Msg
+viewHeader =
+    header []
+        [ div [ class "header-inner" ]
+            [ div [ class "row" ]
+                [ div [ class "header-left col-md-2" ]
+                    [ a [ href "/" ] [ text "« Tillbaka" ] ]
+                , div [ class "col-md-8" ] [ h2 [] [ text "dfunc" ] ]
+                , div [ class "header-right col-md-2" ]
+                    [ a [ href "https://github.com/oskstr/dfunc", class "primary-action" ]
+                        [ text "Github" ]
+                    ]
+                ]
+            ]
+        ]
+
+
+viewContent : Model -> Html Msg
+viewContent model =
+    div [ id "content" ]
+        [ h1 [] [ text "Aktuella mandat" ]
+        , table [ class "table" ]
+            [ thead []
+                [ tr []
+                    [ th [] [ text "Namn" ]
+                    , th [] [ text "Grupp" ]
+                    , th [] [ text "E-post" ]
+                    , th [] [ text "Nuvarande innehavare" ]
+                    ]
+                ]
+            , case model.status of
+                Loading ->
+                    -- TODO spinner while loading
+                    text ""
+
+                Loaded roles ->
+                    viewMandates roles
+
+                Errored string ->
+                    -- TODO error handling
+                    text string
+            ]
+        ]
+
+
+viewMandates : List Role -> Html Msg
+viewMandates roles =
+    let
+        viewMandate : Role -> Maybe User -> Html Msg
+        viewMandate { title, identifier, email, group } user =
+            tr []
+                [ th []
+                    [ a [ href ("/position/" ++ identifier) ] [ text title ] ]
+                , th [] [ text group.name ]
+                , th []
+                    [ a [ href ("mailto:" ++ email) ] [ text email ] ]
+                , th []
+                    [ case user of
+                        Just u ->
+                            a [ href ("/user/" ++ u.kthId) ]
+                                [ text (fullName u) ]
+
+                        Nothing ->
+                            a [] [ text "Vakant" ]
+                    ]
+                ]
+    in
+    tbody [] <|
+        List.concatMap
+            (\role ->
+                case role.mandates of
+                    [] ->
+                        [ viewMandate role Nothing ]
+
+                    _ ->
+                        List.map (\{ user } -> viewMandate role (Just user)) role.mandates
+            )
+            roles
+
+
+fullName : User -> String
+fullName { firstName, lastName } =
+    firstName ++ " " ++ lastName
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    Debug.todo "unimplemented"
+    case msg of
+        GotRoles (Ok roles) ->
+            ( { model | status = Loaded roles }, Cmd.none )
+
+        GotRoles (Err _) ->
+            ( model, Cmd.none )
 
 
 initialModel : Model
 initialModel =
-    { mandates = [] }
+    { status = Loading }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( initialModel, Cmd.none )
+    ( initialModel
+    , Http.get
+        { url = "https://dfunkt.datasektionen.se/api/roles/all/current"
+        , expect = Http.expectJson GotRoles rolesDecoder
+        }
+    )
 
 
 main : Program () Model Msg
@@ -71,47 +180,20 @@ main =
         }
 
 
-type alias JsonModel =
-    { mandates : List JsonMandate }
-
-
-type alias JsonMandate =
-    { title : String
-    , identifier : String
-    , email : String
-    , active : Bool
-    , id : Int
-    , mandates : List Duration
-    , group : Group
-    }
-
-
-type alias Duration =
-    { start : String, end : String, user : User }
-
-
-type alias User =
-    { firstName : String, lastName : String, kthId : String, ugKthId : String }
-
-
-type alias Group =
-    { name : String, identifier : String }
-
-
-jsonMandateDecoder : Decoder JsonMandate
-jsonMandateDecoder =
-    succeed JsonMandate
+roleDecoder : Decoder Role
+roleDecoder =
+    succeed Role
         |> required "title" string
         |> required "identifier" string
         |> required "email" string
         |> required "active" bool
         |> required "id" int
-        |> required "Mandates" (list decodeStartEnd)
+        |> required "Mandates" (list decodeMandate)
         |> required "Group" decodeGroup
 
 
-decodeStartEnd =
-    succeed Duration
+decodeMandate =
+    succeed Mandate
         |> required "start" string
         |> required "end" string
         |> required "User" decodeUser
@@ -131,35 +213,6 @@ decodeGroup =
         |> required "identifier" string
 
 
-jsonModelDecoder : Decoder JsonModel
-jsonModelDecoder =
-    Decode.map (\mandates -> { mandates = mandates }) (list jsonMandateDecoder)
-
-
-
---modelFromJson : JsonModel -> Model
---modelFromJson jsonModel =
---    let
---        mandatesFromJson : JsonMandate -> List Mandate
---        mandatesFromJson =
---            \{ title, identifier, email, active, id, mandates, group } ->
---                List.map
---                    (\{ start, end, user } ->
---                        { title = title
---                        , identifier = identifier
---                        , email = email
---                        , active = active
---                        , id = id
---                        , start = start
---                        , end = end
---                        , firstName = user.firstName
---                        , lastName = user.lastName
---                        , kthId = user.kthId
---                        , ugKthId = user.ugKthId
---                        , groupName = group.name
---                        , groupIdentifier = group.identifier
---                        }
---                    )
---                    mandates
---    in
---    { mandates = List.concatMap mandatesFromJson jsonModel.mandates }
+rolesDecoder : Decoder (List Role)
+rolesDecoder =
+    list roleDecoder

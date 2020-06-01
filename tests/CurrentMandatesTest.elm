@@ -13,10 +13,10 @@ decoderTest =
     test "decoder test" <|
         \_ ->
             testPayload
-                |> decodeString CurrentMandates.jsonModelDecoder
+                |> decodeString CurrentMandates.rolesDecoder
                 |> Expect.equal
                     (Ok
-                        { mandates =
+                        { roles =
                             [ { title = "Kassör"
                               , identifier = "kassor"
                               , email = "kassor@d.kth.se"
