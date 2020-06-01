@@ -1,4 +1,4 @@
-module CurrentMandates exposing (..)
+port module CurrentMandates exposing (..)
 
 import Browser
 import Html exposing (..)
@@ -9,9 +9,11 @@ import Json.Decode as Decode exposing (Decoder, at, bool, int, list, string, suc
 import Json.Decode.Pipeline exposing (optional, required)
 
 
+port setMethoneConfig : MethoneConfig -> Cmd msg
+
+
 type alias Model =
-    { status : Status
-    }
+    { status : Status }
 
 
 type Status
@@ -20,9 +22,25 @@ type Status
     | Errored String
 
 
+type alias MethoneConfig =
+    { system_name : String
+    , color_scheme : String
+    , login_text : String
+    , login_href : String
+    , links : List Link
+    }
+
+
+type alias Link =
+    { str : String
+    , href : String
+    }
+
+
 
 -- TODO reduce fields?
 -- TODO toggle active
+-- TODO add fuzzyfile
 
 
 type alias Role =
@@ -160,13 +178,25 @@ initialModel =
     { status = Loading }
 
 
+initialMethoneConfig =
+    { system_name = "dfunc"
+    , color_scheme = "purple"
+    , login_text = "Logga in"
+    , login_href = "/login" -- TODO
+    , links = [ { str = "Användarlookup", href = "/lookup" } ]
+    }
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( initialModel
-    , Http.get
-        { url = "https://dfunkt.datasektionen.se/api/roles/all/current"
-        , expect = Http.expectJson GotRoles rolesDecoder
-        }
+    , Cmd.batch
+        [ Http.get
+            { url = "https://dfunkt.datasektionen.se/api/roles/all/current"
+            , expect = Http.expectJson GotRoles rolesDecoder
+            }
+        , setMethoneConfig initialMethoneConfig
+        ]
     )
 
 

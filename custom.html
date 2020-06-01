@@ -5,11 +5,16 @@
 </head>
 
 <body>
+<div id="methone-container-replace"></div>
 <div id="app"></div>
-
 <script src="app.js"></script>
+<script async src="//methone.datasektionen.se/bar.js"></script>
 <script>
-    Elm.CurrentMandates.init({node: document.getElementById("app")});
+    var app = Elm.CurrentMandates.init({node: document.getElementById("app")});
+
+    app.ports.setMethoneConfig.subscribe(options => {
+        window.methone_conf.update(options);
+    });
 </script>
 </body>
 </html>
