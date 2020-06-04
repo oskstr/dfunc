@@ -13,7 +13,9 @@ port setMethoneConfig : MethoneConfig -> Cmd msg
 
 
 type alias Model =
-    { status : Status }
+    { status : Status
+    , admin : Bool
+    }
 
 
 type Status
@@ -23,17 +25,8 @@ type Status
 
 
 type alias MethoneConfig =
-    { system_name : String
-    , color_scheme : String
-    , login_text : String
+    { login_text : String
     , login_href : String
-    , links : List Link
-    }
-
-
-type alias Link =
-    { str : String
-    , href : String
     }
 
 
@@ -72,90 +65,79 @@ type Msg
 
 view : Model -> Html Msg
 view model =
-    div [ id "application", class "purple" ]
-        [ viewHeader
-        , viewContent model
-        ]
-
-
-viewHeader : Html Msg
-viewHeader =
-    header []
-        [ div [ class "header-inner" ]
-            [ div [ class "row" ]
-                [ div [ class "header-left col-md-2" ]
-                    [ a [ href "/" ] [ text "« Tillbaka" ] ]
-                , div [ class "col-md-8" ] [ h2 [] [ text "dfunc" ] ]
-                , div [ class "header-right col-md-2" ]
-                    [ a [ href "https://github.com/oskstr/dfunc", class "primary-action" ]
-                        [ text "Github" ]
-                    ]
-                ]
-            ]
-        ]
+    viewContent model
 
 
 viewContent : Model -> Html Msg
 viewContent model =
     div [ id "content" ]
         [ h1 [] [ text "Aktuella mandat" ]
-        , table [ class "table" ]
-            [ thead []
-                [ tr []
-                    [ th [] [ text "Namn" ]
-                    , th [] [ text "Grupp" ]
-                    , th [] [ text "E-post" ]
-                    , th [] [ text "Nuvarande innehavare" ]
+        , div [ id "table-container" ]
+            [ table [ class "table" ]
+                [ thead []
+                    [ tr []
+                        [ th [] [ text "Roll" ]
+
+                        --, th [] [ text "Grupp" ]
+                        , th [] [ text "E-post" ]
+                        , th [] [ text "Nuvarande innehavare" ]
+                        ]
                     ]
+                , case model.status of
+                    Loading ->
+                        -- TODO spinner while loading?
+                        text ""
+
+                    Loaded roles ->
+                        viewMandates roles model.admin
+
+                    Errored string ->
+                        -- TODO error handling
+                        text string
                 ]
-            , case model.status of
-                Loading ->
-                    -- TODO spinner while loading
-                    text ""
-
-                Loaded roles ->
-                    viewMandates roles
-
-                Errored string ->
-                    -- TODO error handling
-                    text string
             ]
         ]
 
 
-viewMandates : List Role -> Html Msg
-viewMandates roles =
-    let
-        viewMandate : Role -> Maybe User -> Html Msg
-        viewMandate { title, identifier, email, group } user =
-            tr []
-                [ th []
-                    [ a [ href ("/position/" ++ identifier) ] [ text title ] ]
-                , th [] [ text group.name ]
-                , th []
-                    [ a [ href ("mailto:" ++ email) ] [ text email ] ]
-                , th []
-                    [ case user of
-                        Just u ->
-                            a [ href ("/user/" ++ u.kthId) ]
-                                [ text (fullName u) ]
-
-                        Nothing ->
-                            a [] [ text "Vakant" ]
-                    ]
-                ]
-    in
+viewMandates : List Role -> Bool -> Html Msg
+viewMandates roles admin =
     tbody [] <|
         List.concatMap
             (\role ->
-                case role.mandates of
-                    [] ->
-                        [ viewMandate role Nothing ]
+                case role.active || admin of
+                    True ->
+                        case role.mandates of
+                            [] ->
+                                [ viewMandate role Nothing ]
 
-                    _ ->
-                        List.map (\{ user } -> viewMandate role (Just user)) role.mandates
+                            _ ->
+                                List.map (\{ user } -> viewMandate role (Just user)) role.mandates
+
+                    False ->
+                        []
             )
             roles
+
+
+viewMandate : Role -> Maybe User -> Html Msg
+viewMandate { title, identifier, email, group } user =
+    tr []
+        [ th []
+            [ a [ href ("/role/" ++ identifier) ] [ text title ] ]
+
+        --, th [] [ text group.name ]
+        , th []
+            [ a [ href ("mailto:" ++ email) ] [ text email ] ]
+        , th [ class "user" ]
+            [ case user of
+                Just u ->
+                    a [ href ("/user/" ++ u.kthId) ]
+                        [ text (fullName u) ]
+
+                Nothing ->
+                    a [] [ text "Vakant" ]
+            ]
+        ]
 
 
 fullName : User -> String
@@ -175,15 +157,13 @@ update msg model =
 
 initialModel : Model
 initialModel =
-    { status = Loading }
+    { status = Loading, admin = True }
 
 
+initialMethoneConfig : MethoneConfig
 initialMethoneConfig =
-    { system_name = "dfunc"
-    , color_scheme = "purple"
-    , login_text = "Logga in"
-    , login_href = "/login" -- TODO
-    , links = [ { str = "Användarlookup", href = "/lookup" } ]
+    { login_text = "Logga in"
+    , login_href = "/login" --TODO fix login
     }
 
 
@@ -195,7 +175,7 @@ init _ =
             { url = "https://dfunkt.datasektionen.se/api/roles/all/current"
             , expect = Http.expectJson GotRoles rolesDecoder
             }
-        , setMethoneConfig initialMethoneConfig
+        , setMethoneConfig initialMethoneConfig -- TODO don't set here but maybe set on login
         ]
     )
 
